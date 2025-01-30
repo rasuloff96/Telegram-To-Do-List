@@ -12,7 +12,7 @@ let users = {}; // Foydalanuvchilarni profillari
 const getMainMenu = () => ({
     reply_markup: {
         inline_keyboard: [
-            [{ text: "➕ Vazifa qo'shish", callback_data: "add_task" }],
+            [{ text: "➕ Vazifa qo'shish", callback_data: "add_task" }], 
             [{ text: "📝 Vazifalar ro'yxati", callback_data: "list_tasks" }],
             [{ text: "🗑 Vazifa o'chirish", callback_data: "delete_task" }],
             [{ text: "📂 Vazifalar kategoriyasi", callback_data: "add_task_category" }],
@@ -26,16 +26,29 @@ const getMainMenu = () => ({
 // Vazifani qo'shish
 bot.on("callback_query", (query) => {
     const chatId = query.message.chat.id;
-    
+
     // Vazifa qo'shish
     if (query.data === "add_task") {
         bot.sendMessage(chatId, "📌 Vazifani kiriting.");
         bot.once("message", (msg) => {
             let task = msg.text;
             if (!tasks[chatId]) tasks[chatId] = [];
-            tasks[chatId].push({ task });
-            saveTasks(tasks);
-            bot.sendMessage(chatId, `✅ Vazifa qo'shildi: "${task}"`, getMainMenu());
+            bot.sendMessage(chatId, "📂 Iltimos, vazifa uchun kategoriya tanlang:", {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📚 O'qish", callback_data: "category_study" }],
+                        [{ text: "💼 Ish", callback_data: "category_work" }],
+                        [{ text: "🏠 Shaxsiy", callback_data: "category_personal" }]
+                    ]
+                }
+            });
+            
+            bot.once("callback_query", (categoryQuery) => {
+                let category = categoryQuery.data.replace("category_", "");
+                tasks[chatId].push({ task, category });
+                saveTasks(tasks);
+                bot.sendMessage(chatId, `✅ Vazifa qo'shildi: "${task}" kategoriyasi: ${category}`, getMainMenu());
+            });
         });
     }
 
@@ -45,7 +58,7 @@ bot.on("callback_query", (query) => {
         if (userTasks.length === 0) {
             bot.sendMessage(chatId, "🚫 Hech qanday vazifa mavjud emas.", getMainMenu());
         } else {
-            let taskList = userTasks.map((task, index) => `${index + 1}. ${task.task}`).join("\n");
+            let taskList = userTasks.map((task, index) => `${index + 1}. ${task.task} (Kategoriya: ${task.category})`).join("\n");
             bot.sendMessage(chatId, `📝 Vazifalar:\n${taskList}`, getMainMenu());
         }
     }
@@ -85,6 +98,20 @@ bot.on("callback_query", (query) => {
             users[chatId] = { name: msg.text };
             saveUsers(users);
             bot.sendMessage(chatId, `✅ Ismingiz saqlandi: ${msg.text}`);
+            
+            bot.sendMessage(chatId, "📜 Endi familiyangizni kiriting.");
+            bot.once("message", (msg) => {
+                users[chatId].surname = msg.text;
+                saveUsers(users);
+                bot.sendMessage(chatId, `✅ Familiyangiz saqlandi: ${msg.text}`);
+                
+                bot.sendMessage(chatId, "📜 Yoshingizni kiriting.");
+                bot.once("message", (msg) => {
+                    users[chatId].age = msg.text;
+                    saveUsers(users);
+                    bot.sendMessage(chatId, `✅ Yoshingiz saqlandi: ${msg.text}`, getMainMenu());
+                });
+            });
         });
     }
 
@@ -137,3 +164,6 @@ bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     bot.sendMessage(chatId, "Salom! Men sizning To-Do List botingizman. Qo'shimcha vazifalar qo'shish uchun tugmalarga bosing.", getMainMenu());
 });
+
+console.log("✅ Dastur ishga tushdi...");
+
