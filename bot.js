@@ -1,86 +1,139 @@
-require('dotenv').config();
-const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
+const fs = require('fs');
 
-const token = process.env.BOT_TOKEN;
+// Tokenni o'zgariting
+const token = '7935025399:AAEhHZx-lzIBsQ23nQv629T2A6ExUSnmTd0';
 const bot = new TelegramBot(token, { polling: true });
 
-const DATA_FILE = 'tasks.json';
+let tasks = {}; // Foydalanuvchining vazifalari
+let users = {}; // Foydalanuvchilarni profillari
 
-// JSON faylni o‘qish
+// Asosiy menyu
+const getMainMenu = () => ({
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: "➕ Vazifa qo'shish", callback_data: "add_task" }],
+            [{ text: "📝 Vazifalar ro'yxati", callback_data: "list_tasks" }],
+            [{ text: "🗑 Vazifa o'chirish", callback_data: "delete_task" }],
+            [{ text: "📂 Vazifalar kategoriyasi", callback_data: "add_task_category" }],
+            [{ text: "🔔 Eslatma qo'shish", callback_data: "add_reminder" }],
+            [{ text: "📊 Statistika", callback_data: "view_statistics" }],
+            [{ text: "📝 Profil sozlamalari", callback_data: "set_profile" }]
+        ]
+    }
+});
+
+// Vazifani qo'shish
+bot.on("callback_query", (query) => {
+    const chatId = query.message.chat.id;
+    
+    // Vazifa qo'shish
+    if (query.data === "add_task") {
+        bot.sendMessage(chatId, "📌 Vazifani kiriting.");
+        bot.once("message", (msg) => {
+            let task = msg.text;
+            if (!tasks[chatId]) tasks[chatId] = [];
+            tasks[chatId].push({ task });
+            saveTasks(tasks);
+            bot.sendMessage(chatId, `✅ Vazifa qo'shildi: "${task}"`, getMainMenu());
+        });
+    }
+
+    // Vazifalarni ko'rsatish
+    if (query.data === "list_tasks") {
+        let userTasks = tasks[chatId] || [];
+        if (userTasks.length === 0) {
+            bot.sendMessage(chatId, "🚫 Hech qanday vazifa mavjud emas.", getMainMenu());
+        } else {
+            let taskList = userTasks.map((task, index) => `${index + 1}. ${task.task}`).join("\n");
+            bot.sendMessage(chatId, `📝 Vazifalar:\n${taskList}`, getMainMenu());
+        }
+    }
+
+    // Vazifani o'chirish
+    if (query.data === "delete_task") {
+        let userTasks = tasks[chatId] || [];
+        if (userTasks.length === 0) {
+            bot.sendMessage(chatId, "🚫 Hech qanday vazifa o'chiriladigan yo'q.", getMainMenu());
+        } else {
+            let taskList = userTasks.map((task, index) => `${index + 1}. ${task.task}`).join("\n");
+            bot.sendMessage(chatId, `📌 Qaysi vazifani o'chirmoqchisiz?\n${taskList}`, {
+                reply_markup: {
+                    force_reply: true
+                }
+            });
+        }
+    }
+
+    // Kategoriyani tanlash
+    if (query.data === "add_task_category") {
+        bot.sendMessage(chatId, "📂 Iltimos, vazifa uchun kategoriya tanlang:", {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📚 O'qish", callback_data: "category_study" }],
+                    [{ text: "💼 Ish", callback_data: "category_work" }],
+                    [{ text: "🏠 Shaxsiy", callback_data: "category_personal" }]
+                ]
+            }
+        });
+    }
+
+    // Profilni sozlash
+    if (query.data === "set_profile") {
+        bot.sendMessage(chatId, "📜 Profil uchun ismingizni kiriting.");
+        bot.once("message", (msg) => {
+            users[chatId] = { name: msg.text };
+            saveUsers(users);
+            bot.sendMessage(chatId, `✅ Ismingiz saqlandi: ${msg.text}`);
+        });
+    }
+
+    // Eslatmalar qo'shish
+    if (query.data === "add_reminder") {
+        bot.sendMessage(chatId, "🕐 Eslatma vaqti kiriting (masalan, 'Bugun 18:00').");
+        bot.once("message", (msg) => {
+            let reminderTime = msg.text;
+            bot.sendMessage(chatId, `⏰ Eslatma qo'shildi: ${reminderTime}`);
+            // Eslatmalarni qo'llash uchun vaqtni saqlash va eslatma yuborish
+        });
+    }
+
+    // Statistika
+    if (query.data === "view_statistics") {
+        let userTasks = tasks[chatId] || [];
+        let taskCount = userTasks.length;
+        bot.sendMessage(chatId, `📊 Statistika:\nVazifalar soni: ${taskCount}`, getMainMenu());
+    }
+});
+
+// Foydalanuvchilarning vazifalari va profillarini saqlash
+function saveTasks(tasks) {
+    fs.writeFileSync("tasks.json", JSON.stringify(tasks, null, 2));
+}
+
+function saveUsers(users) {
+    fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
+}
+
 function loadTasks() {
-    if (fs.existsSync(DATA_FILE)) {
-        return JSON.parse(fs.readFileSync(DATA_FILE));
+    if (fs.existsSync("tasks.json")) {
+        return JSON.parse(fs.readFileSync("tasks.json"));
     }
     return {};
 }
 
-// JSON faylga yozish
-function saveTasks(tasks) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(tasks, null, 2));
-}
-
-// Boshlang‘ich menyu tugmalari
-function getMainMenu() {
-    return {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "➕ Vazifa qo‘shish", callback_data: "add_task" }],
-                [{ text: "📋 Vazifalarni ko‘rish", callback_data: "list_tasks" }],
-                [{ text: "❌ Vazifani o‘chirish", callback_data: "delete_task" }]
-            ]
-        }
-    };
-}
-
-// Start komandasi
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "📌 Assalomu alaykum! Men To-Do List botman. Quyidagi tugmalar orqali menga buyruq bering.", getMainMenu());
-});
-
-// Callback tugmalar
-bot.on("callback_query", (query) => {
-    const chatId = query.message.chat.id;
-    let tasks = loadTasks();
-
-    if (query.data === "add_task") {
-        bot.sendMessage(chatId, "✏️ Iltimos, yangi vazifani yozing.");
-        bot.once("message", (msg) => {
-            let text = msg.text;
-            if (!tasks[chatId]) tasks[chatId] = [];
-            tasks[chatId].push(text);
-            saveTasks(tasks);
-            bot.sendMessage(chatId, `✅ Vazifa qo‘shildi: "${text}"`, getMainMenu());
-        });
-    
-    } else if (query.data === "list_tasks") {
-        if (!tasks[chatId] || tasks[chatId].length === 0) {
-            bot.sendMessage(chatId, "📌 Sizda hozircha vazifalar yo‘q.", getMainMenu());
-        } else {
-            let reply = "📋 Sizning vazifalaringiz:\n";
-            tasks[chatId].forEach((task, index) => {
-                reply += `${index + 1}. ${task}\n`;
-            });
-            bot.sendMessage(chatId, reply, getMainMenu());
-        }
-
-    } else if (query.data === "delete_task") {
-        if (!tasks[chatId] || tasks[chatId].length === 0) {
-            bot.sendMessage(chatId, "❌ O‘chirish uchun vazifalar yo‘q.", getMainMenu());
-        } else {
-            let buttons = tasks[chatId].map((task, index) => [{ text: `${index + 1}. ${task}`, callback_data: `del_${index}` }]);
-            bot.sendMessage(chatId, "🗑 O‘chirmoqchi bo‘lgan vazifangizni tanlang:", {
-                reply_markup: { inline_keyboard: buttons }
-            });
-        }
-    } else if (query.data.startsWith("del_")) {
-        let index = parseInt(query.data.split("_")[1]);
-        if (tasks[chatId] && tasks[chatId][index]) {
-            let removedTask = tasks[chatId].splice(index, 1);
-            saveTasks(tasks);
-            bot.sendMessage(chatId, `❌ O‘chirildi: "${removedTask}"`, getMainMenu());
-        }
+function loadUsers() {
+    if (fs.existsSync("users.json")) {
+        return JSON.parse(fs.readFileSync("users.json"));
     }
-});
+    return {};
+}
 
-console.log("✅ Bot ishlamoqda...");
+tasks = loadTasks();
+users = loadUsers();
+
+// Botni ishga tushirish
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, "Salom! Men sizning To-Do List botingizman. Qo'shimcha vazifalar qo'shish uchun tugmalarga bosing.", getMainMenu());
+});
